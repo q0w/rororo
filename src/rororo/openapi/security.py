@@ -1,18 +1,13 @@
+import itertools
 from typing import cast, List, Optional, Union
 
 from aiohttp import BasicAuth, hdrs
-from openapi_core.schema.operations.models import Operation
-from openapi_core.schema.security_schemes.enums import (
-    HttpAuthScheme,
-    SecuritySchemeType,
-)
-from openapi_core.schema.security_schemes.models import SecurityScheme
 from openapi_core.security.exceptions import SecurityError as CoreSecurityError
 from openapi_core.validation.request.datatypes import OpenAPIRequest
 from openapi_core.validation.request.validators import RequestValidator
 from pyrsistent import pmap
 
-from ..annotations import MappingStrAny
+from ..annotations import MappingStrAny, DictStrAny
 from .annotations import SecurityDict
 from .exceptions import BasicSecurityError, SecurityError
 
@@ -74,16 +69,18 @@ def get_security_data(
 
 
 def get_security_list(
-    validator: RequestValidator, operation: Operation
+    validator: RequestValidator, operation: DictStrAny
 ) -> List[SecurityDict]:
-    if operation.security is not None:
-        return cast(List[SecurityDict], operation.security)
-    return cast(List[SecurityDict], validator.spec.security)
+    if operation.get('security') is not None:
+        return cast(List[SecurityDict], operation['security'])
+    operations = itertools.chain.from_iterable((path.values() for path in validator.spec['paths'].values()))
+    sl = list(map(lambda o: o['security'], filter(lambda o: o.get('security'), operations)))
+    return cast(List[SecurityDict], sl)
 
 
 def get_security_scheme(
     validator: RequestValidator, scheme_name: str
-) -> Optional[SecurityScheme]:
+) -> Optional[DictStrAny]:
     return validator.spec.components.security_schemes.get(scheme_name)
 
 
@@ -95,8 +92,8 @@ def is_basic_auth_security_scheme(
         return False
     return cast(
         bool,
-        scheme.type == SecuritySchemeType.HTTP
-        and scheme.scheme == HttpAuthScheme.BASIC,
+        scheme['type'] == 'http'
+        and scheme['scheme'] == 'basic',
     )
 
 
@@ -108,13 +105,13 @@ def is_jwt_bearer_security_scheme(
         return False
     return cast(
         bool,
-        scheme.type == SecuritySchemeType.HTTP
-        and scheme.scheme == HttpAuthScheme.BEARER,
+        scheme['type'] == 'http'
+        and scheme['scheme'] == 'bearer',
     )
 
 
 def validate_security(
-    validator: RequestValidator, request: OpenAPIRequest, operation: Operation
+    validator: RequestValidator, request: OpenAPIRequest, operation: DictStrAny
 ) -> MappingStrAny:
     """Validate security data for the request if any.
 

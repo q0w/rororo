@@ -26,7 +26,7 @@ from aiohttp_middlewares.annotations import (
     UrlCollection,
 )
 from aiohttp_middlewares.error import Config as ErrorMiddlewareConfig
-from openapi_core.schema.specs.models import Spec
+from openapi_core.spec.paths import SpecPath
 from openapi_core.shortcuts import create_spec
 from pyrsistent import pmap
 from yarl import URL
@@ -73,7 +73,7 @@ class CorsMiddlewareKwargsDict(TypedDict, total=False):
 class CreateSchemaAndSpec(Protocol):
     def __call__(
         self, path: Path, *, schema_loader: SchemaLoader = None
-    ) -> Tuple[DictStrAny, Spec]:  # pragma: no cover
+    ) -> Tuple[DictStrAny, SpecPath]:  # pragma: no cover
         ...
 
 
@@ -255,7 +255,7 @@ class OperationTableDef:
 
 
 def convert_operations_to_routes(
-    operations: OperationTableDef, spec: Spec, *, prefix: str = None
+    operations: OperationTableDef, spec: SpecPath, *, prefix: str = None
 ) -> web.RouteTableDef:
     """Convert operations table defintion to routes table definition."""
 
@@ -269,12 +269,12 @@ def convert_operations_to_routes(
         operation_id = getattr(handler, HANDLER_OPENAPI_MAPPING_KEY)[
             hdrs.METH_ANY
         ]
-        core_operation = get_core_operation(spec, operation_id)
+        paths, path, operation = get_core_operation(spec, operation_id)
 
         routes.route(
-            core_operation.http_method,
-            add_prefix(core_operation.path_name, prefix),
-            name=get_route_name(core_operation.operation_id),
+            next(iter(path)),
+            add_prefix(paths, prefix),
+            name=get_route_name(operation.get('operationId')),
         )(handler)
 
     # But view should be added as a view instead
@@ -284,12 +284,12 @@ def convert_operations_to_routes(
         )
 
         first_operation_id = ids.popleft()
-        core_operation = get_core_operation(spec, first_operation_id)
+        paths, _, operation = get_core_operation(spec, first_operation_id)
 
-        path = add_prefix(core_operation.path_name, prefix)
+        path = add_prefix(paths, prefix)
         routes.view(
             path,
-            name=get_route_name(core_operation.operation_id),
+            name=get_route_name(operation.get('operationId')),
         )(view)
 
         # Hacky way of adding aliases to class based views with multiple
@@ -304,7 +304,7 @@ def convert_operations_to_routes(
 
 def create_schema_and_spec(
     path: Path, *, schema_loader: SchemaLoader = None
-) -> Tuple[DictStrAny, Spec]:
+) -> Tuple[DictStrAny, SpecPath]:
     schema = read_openapi_schema(path, loader=schema_loader)
     return (schema, create_spec(schema))
 
@@ -312,7 +312,7 @@ def create_schema_and_spec(
 @lru_cache(maxsize=128)
 def create_schema_and_spec_with_cache(  # type: ignore
     path: Path, *, schema_loader: SchemaLoader = None
-) -> Tuple[DictStrAny, Spec]:
+) -> Tuple[DictStrAny, SpecPath]:
     return create_schema_and_spec(path, schema_loader=schema_loader)
 
 
@@ -350,7 +350,7 @@ def find_route_prefix(
     )
 
 
-def fix_spec_operations(spec: Spec, schema: DictStrAny) -> Spec:
+def fix_spec_operations(spec: SpecPath, schema: DictStrAny) -> SpecPath:
     """Fix spec operations.
 
     ``openapi-core`` sets up operation security to an empty list even it is
@@ -376,15 +376,15 @@ def fix_spec_operations(spec: Spec, schema: DictStrAny) -> Spec:
 
             mapping[operation_id] = maybe_operation_data.get("security")
 
-    for path in spec.paths.values():
-        for operation in path.operations.values():
-            if operation.security != []:
+    for path in spec['paths'].values():
+        for operation in path.values():
+            if operation.get('security') != []:
                 continue
 
-            if operation.operation_id is None:
+            if operation.get('operationId') is None:
                 continue
 
-            operation.security = mapping[operation.operation_id]
+            operation['security'] = mapping[operation.operation_id]
 
     return spec
 
@@ -456,7 +456,7 @@ def setup_openapi(
     app: web.Application,
     *operations: OperationTableDef,
     schema: DictStrAny,
-    spec: Spec,
+    spec: SpecPath,
     server_url: Url = None,
     is_validate_response: bool = True,
     has_openapi_schema_handler: bool = True,
@@ -474,7 +474,7 @@ def setup_openapi(  # type: ignore
     schema_path: Union[str, Path] = None,
     *operations: OperationTableDef,
     schema: DictStrAny = None,
-    spec: Spec = None,
+    spec: SpecPath = None,
     server_url: Url = None,
     is_validate_response: bool = True,
     has_openapi_schema_handler: bool = True,

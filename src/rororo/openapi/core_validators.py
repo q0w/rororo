@@ -9,20 +9,14 @@ from jsonschema.exceptions import FormatError
 from more_itertools import peekable
 from openapi_core.casting.schemas.exceptions import CastError as CoreCastError
 from openapi_core.exceptions import OpenAPIError as CoreOpenAPIError
-from openapi_core.schema.operations.models import Operation
-from openapi_core.schema.parameters.models import Parameter
-from openapi_core.schema.paths.models import Path
-from openapi_core.schema.schemas.enums import SchemaFormat, SchemaType
-from openapi_core.schema.schemas.types import NoValue
-from openapi_core.schema.servers.models import Server
-from openapi_core.schema.specs.models import Spec
+from openapi_core.spec.paths import SpecPath
 from openapi_core.templating.datatypes import TemplateResult
 from openapi_core.templating.paths.exceptions import (
     OperationNotFound,
     PathNotFound,
     ServerNotFound,
 )
-from openapi_core.templating.paths.finders import PathFinder as CorePathFinder
+from openapi_core.templating.paths.finders import PathFinder
 from openapi_core.unmarshalling.schemas.enums import UnmarshalContext
 from openapi_core.unmarshalling.schemas.exceptions import InvalidSchemaValue
 from openapi_core.unmarshalling.schemas.factories import (
@@ -30,8 +24,8 @@ from openapi_core.unmarshalling.schemas.factories import (
 )
 from openapi_core.unmarshalling.schemas.formatters import Formatter
 from openapi_core.unmarshalling.schemas.unmarshallers import (
-    ArrayUnmarshaller as CoreArrayUnmarshaller,
-    ObjectUnmarshaller as CoreObjectUnmarshaller,
+    ArrayUnmarshaller,
+    ObjectUnmarshaller,
 )
 from openapi_core.validation.request.datatypes import (
     OpenAPIRequest,
@@ -49,7 +43,7 @@ from openapi_core.validation.validators import (
 )
 from openapi_schema_validator._format import oas30_format_checker
 
-from ..annotations import MappingStrAny
+from ..annotations import MappingStrAny, DictStrAny
 from .annotations import ValidateEmailKwargsDict
 from .data import OpenAPIParameters, to_openapi_parameters
 from .exceptions import CastError, ValidationError
@@ -61,20 +55,7 @@ DATE_TIME_FORMATTER = Formatter.from_callables(
     partial(oas30_format_checker.check, format="date-time"),
     parse_datetime,
 )
-PathTuple = Tuple[Path, Operation, Server, TemplateResult, TemplateResult]
-
-
-class ArrayUnmarshaller(CoreArrayUnmarshaller):
-    """Custom array unmarshaller to support nullable arrays.
-
-    To be removed after ``openapi-core`` fixed an issue of supporting nullable
-    arrays: https://github.com/p1c2u/openapi-core/issues/251
-    """
-
-    def __call__(self, value: Any = NoValue) -> Optional[List[Any]]:
-        if value is None and self.schema.nullable:
-            return None
-        return cast(List[Any], super().__call__(value))
+PathTuple = Tuple[DictStrAny, DictStrAny, DictStrAny, TemplateResult, TemplateResult]
 
 
 class EmailFormatter(Formatter):
@@ -97,57 +78,6 @@ class EmailFormatter(Formatter):
         return True
 
 
-class ObjectUnmarshaller(CoreObjectUnmarshaller):
-    """Custom object unmarshaller to support nullable objects.
-
-    To be removed after ``openapi-core`` fixed an issue of` supporting nullable
-    objects: https://github.com/p1c2u/openapi-core/issues/232
-    """
-
-    def __call__(self, value: Any = NoValue) -> Optional[Dict[Any, Any]]:
-        if value is None and self.schema.nullable:
-            return None
-        return cast(Dict[Any, Any], super().__call__(value))
-
-
-class PathFinder(CorePathFinder):
-    """Custom path finder to fix issue with finding paths with vars.
-
-    Temporary fix for https://github.com/p1c2u/openapi-core/issues/226, to be
-    removed from *rororo* after next ``openapi-core`` version released with
-    proper fix for the issue.
-    """
-
-    def find(self, request: OpenAPIRequest) -> PathTuple:
-        """Better finder for request path.
-
-        Instead of returning first possible result from
-        ``self._get_servers_iter(...)`` call, attempt to ensure that
-        ``request.full_url_pattern`` ends with ``path.name``.
-        """
-        paths_iter_peek = peekable(
-            self._get_paths_iter(request.full_url_pattern)
-        )
-        if not paths_iter_peek:
-            raise PathNotFound(request.full_url_pattern)
-
-        operations_iter_peek = peekable(
-            self._get_operations_iter(request.method, paths_iter_peek)
-        )
-        if not operations_iter_peek:
-            raise OperationNotFound(request.full_url_pattern, request.method)
-
-        servers_iter: Iterator[PathTuple] = self._get_servers_iter(
-            request.full_url_pattern, operations_iter_peek
-        )
-        for server in servers_iter:
-            path = server[0]
-            if request.full_url_pattern.endswith(path.name):
-                return server
-
-        raise ServerNotFound(request.full_url_pattern)
-
-
 class SchemaUnmarshallersFactory(CoreSchemaUnmarshallersFactory):
     """
     Custom schema unmarshallers factory to deal with tz aware date time
@@ -159,8 +89,8 @@ class SchemaUnmarshallersFactory(CoreSchemaUnmarshallersFactory):
 
     COMPLEX_UNMARSHALLERS = {
         **CoreSchemaUnmarshallersFactory.COMPLEX_UNMARSHALLERS,
-        SchemaType.ARRAY: ArrayUnmarshaller,
-        SchemaType.OBJECT: ObjectUnmarshaller,
+        'array': ArrayUnmarshaller,
+        'object': ObjectUnmarshaller,
     }
 
     def get_formatter(
@@ -168,7 +98,7 @@ class SchemaUnmarshallersFactory(CoreSchemaUnmarshallersFactory):
         default_formatters: Dict[str, Formatter],
         type_format: str = None,
     ) -> Formatter:
-        if type_format == SchemaFormat.DATETIME.value:
+        if type_format == 'date-time':
             return DATE_TIME_FORMATTER
         return super().get_formatter(default_formatters, type_format)
 
@@ -209,7 +139,7 @@ class BaseValidator(CoreBaseValidator):
             return unmarshaller(value)
         except InvalidSchemaValue as err:
             # Modify invalid schema validation errors to include parameter name
-            if isinstance(param_or_media_type, Parameter):
+            if isinstance(param_or_media_type, DictStrAny):
                 param_name = param_or_media_type.name
 
                 for schema_error in err.schema_errors:
@@ -236,7 +166,7 @@ class RequestValidator(BaseValidator, CoreRequestValidator):
         return parameters, errors
 
     def _get_security(
-        self, request: OpenAPIRequest, operation: Operation
+        self, request: OpenAPIRequest, operation: DictStrAny
     ) -> MappingStrAny:
         """
         Custom logic for validating request security, which support handling
@@ -271,7 +201,7 @@ def get_custom_formatters(
 
 
 def validate_core_request(
-    spec: Spec,
+    spec: SpecPath,
     core_request: OpenAPIRequest,
     *,
     validate_email_kwargs: ValidateEmailKwargsDict = None,
@@ -302,7 +232,7 @@ def validate_core_request(
 
 
 def validate_core_response(
-    spec: Spec,
+    spec: SpecPath,
     core_request: OpenAPIRequest,
     core_response: OpenAPIResponse,
     *,
@@ -314,7 +244,7 @@ def validate_core_response(
     )
 
     validator = ResponseValidator(
-        spec,
+        SpecPath,
         custom_formatters=custom_formatters,
         base_url=get_base_url(core_request),
     )

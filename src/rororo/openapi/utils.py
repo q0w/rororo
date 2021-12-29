@@ -2,7 +2,7 @@ from typing import Any, cast, Optional, Union
 
 from aiohttp import web
 from aiohttp.helpers import ChainMapProxy
-from openapi_core.schema.specs.models import Spec
+from openapi_core.spec.paths import SpecPath
 from openapi_core.validation.request.datatypes import OpenAPIRequest
 from yarl import URL
 
@@ -67,14 +67,14 @@ def get_openapi_schema(
         )
 
 
-def get_openapi_spec(mixed: Union[web.Application, ChainMapProxy]) -> Spec:
+def get_openapi_spec(mixed: Union[web.Application, ChainMapProxy]) -> SpecPath:
     """Shortcut to retrieve OpenAPI spec from ``aiohttp.web`` application.
 
     ``ConfigruationError`` raises if :class:`aiohttp.web.Application` does not
     contain registered OpenAPI spec.
     """
     try:
-        return mixed[APP_OPENAPI_SPEC_KEY]
+        return SpecPath.from_spec(mixed[APP_OPENAPI_SPEC_KEY])
     except KeyError:
         raise ConfigurationError(
             "Seems like OpenAPI spec not registered to the application. Use "

@@ -20,7 +20,7 @@ from openapi_core.templating.paths.finders import PathFinder
 from openapi_core.unmarshalling.schemas.enums import UnmarshalContext
 from openapi_core.unmarshalling.schemas.exceptions import InvalidSchemaValue
 from openapi_core.unmarshalling.schemas.factories import (
-    SchemaUnmarshallersFactory as CoreSchemaUnmarshallersFactory,
+    SchemaUnmarshallersFactory,
 )
 from openapi_core.unmarshalling.schemas.formatters import Formatter
 from openapi_core.unmarshalling.schemas.unmarshallers import (
@@ -43,7 +43,7 @@ from openapi_core.validation.validators import (
 )
 from openapi_schema_validator._format import oas30_format_checker
 
-from ..annotations import MappingStrAny, DictStrAny
+from ..annotations import DictStrAny, MappingStrAny
 from .annotations import ValidateEmailKwargsDict
 from .data import OpenAPIParameters, to_openapi_parameters
 from .exceptions import CastError, ValidationError
@@ -55,7 +55,9 @@ DATE_TIME_FORMATTER = Formatter.from_callables(
     partial(oas30_format_checker.check, format="date-time"),
     parse_datetime,
 )
-PathTuple = Tuple[DictStrAny, DictStrAny, DictStrAny, TemplateResult, TemplateResult]
+PathTuple = Tuple[
+    DictStrAny, DictStrAny, DictStrAny, TemplateResult, TemplateResult
+]
 
 
 class EmailFormatter(Formatter):
@@ -78,74 +80,51 @@ class EmailFormatter(Formatter):
         return True
 
 
-class SchemaUnmarshallersFactory(CoreSchemaUnmarshallersFactory):
-    """
-    Custom schema unmarshallers factory to deal with tz aware date time
-    strings.
-
-    Temporary fix to https://github.com/p1c2u/openapi-core/issues/235, to be
-    removed from *rororo* after next ``openapi-core`` release.
-    """
-
-    COMPLEX_UNMARSHALLERS = {
-        **CoreSchemaUnmarshallersFactory.COMPLEX_UNMARSHALLERS,
-        'array': ArrayUnmarshaller,
-        'object': ObjectUnmarshaller,
-    }
-
-    def get_formatter(
-        self,
-        default_formatters: Dict[str, Formatter],
-        type_format: str = None,
-    ) -> Formatter:
-        if type_format == 'date-time':
-            return DATE_TIME_FORMATTER
-        return super().get_formatter(default_formatters, type_format)
-
-
 class BaseValidator(CoreBaseValidator):
-    """Custom base validator to deal with tz aware date time strings.
-
-    To be removed from *rororo* after next ``openapi-core`` version release.
-    """
-
     def _cast(self, param_or_media_type: Any, value: Any) -> Any:
         try:
             return super()._cast(param_or_media_type, value)
         except CoreCastError as err:
             # Pass param or media type name to cast error
             raise CastError(
-                name=param_or_media_type.name, value=err.value, type=err.type
+                name=param_or_media_type["name"],
+                value=err.value,
+                type=err.type,
             )
-
-    def _find_path(self, request: OpenAPIRequest) -> PathTuple:
-        return PathFinder(self.spec, base_url=self.base_url).find(request)
 
     def _unmarshal(
         self, param_or_media_type: Any, value: Any, context: UnmarshalContext
     ) -> Any:
-        """Use custom unmarshallers factory for unmarsahlling data."""
-        if not param_or_media_type.schema:
+        # @todo: use super()._unmarshal
+        if "schema" not in param_or_media_type:
             return value
 
+        from openapi_core.unmarshalling.schemas.factories import (
+            SchemaUnmarshallersFactory,
+        )
+
+        spec_resolver = (
+            self.spec.accessor.dereferencer.resolver_manager.resolver
+        )
         unmarshallers_factory = SchemaUnmarshallersFactory(
-            self.spec._resolver,
+            spec_resolver,
+            self.format_checker,
             self.custom_formatters,
             context=context,
         )
-        unmarshaller = unmarshallers_factory.create(param_or_media_type.schema)
-
+        schema = param_or_media_type / "schema"
+        unmarshaller = unmarshallers_factory.create(schema)
         try:
             return unmarshaller(value)
         except InvalidSchemaValue as err:
             # Modify invalid schema validation errors to include parameter name
-            if isinstance(param_or_media_type, DictStrAny):
-                param_name = param_or_media_type.name
-
-                for schema_error in err.schema_errors:
-                    schema_error.path = schema_error.relative_path = deque(
-                        [param_name]
-                    )
+            if isinstance(param_or_media_type, SpecPath):
+                param_name = param_or_media_type.get("name")
+                if param_name:
+                    for schema_error in err.schema_errors:
+                        schema_error.path = schema_error.relative_path = deque(
+                            [param_name]
+                        )
 
             raise err
 
@@ -165,23 +144,11 @@ class RequestValidator(BaseValidator, CoreRequestValidator):
             )
         return parameters, errors
 
-    def _get_security(
-        self, request: OpenAPIRequest, operation: DictStrAny
-    ) -> MappingStrAny:
-        """
-        Custom logic for validating request security, which support handling
-        JWT tokens without decoding them from ``base64`` (as needed for
-        basic authorization).
-
-        Consider to remove from *rororo* after next ``openapi-core`` release.
-        """
-        return validate_security(self, request, operation)
-
     def _unmarshal(  # type: ignore
         self, param_or_media_type: Any, value: Any
     ) -> Any:
         return super()._unmarshal(
-            param_or_media_type, value, UnmarshalContext.REQUEST
+            param_or_media_type, value, context=UnmarshalContext.REQUEST
         )
 
 
@@ -190,7 +157,7 @@ class ResponseValidator(BaseValidator, CoreResponseValidator):
         self, param_or_media_type: Any, value: Any
     ) -> Any:
         return super()._unmarshal(
-            param_or_media_type, value, UnmarshalContext.RESPONSE
+            param_or_media_type, value, context=UnmarshalContext.RESPONSE
         )
 
 
@@ -244,7 +211,7 @@ def validate_core_response(
     )
 
     validator = ResponseValidator(
-        SpecPath,
+        spec,
         custom_formatters=custom_formatters,
         base_url=get_base_url(core_request),
     )

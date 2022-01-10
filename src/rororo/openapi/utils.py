@@ -74,7 +74,7 @@ def get_openapi_spec(mixed: Union[web.Application, ChainMapProxy]) -> SpecPath:
     contain registered OpenAPI spec.
     """
     try:
-        return SpecPath.from_spec(mixed[APP_OPENAPI_SPEC_KEY])
+        return mixed[APP_OPENAPI_SPEC_KEY]
     except KeyError:
         raise ConfigurationError(
             "Seems like OpenAPI spec not registered to the application. Use "

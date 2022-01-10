@@ -26,8 +26,8 @@ from aiohttp_middlewares.annotations import (
     UrlCollection,
 )
 from aiohttp_middlewares.error import Config as ErrorMiddlewareConfig
-from openapi_core.spec.paths import SpecPath
 from openapi_core.shortcuts import create_spec
+from openapi_core.spec.paths import SpecPath
 from pyrsistent import pmap
 from yarl import URL
 
@@ -274,7 +274,7 @@ def convert_operations_to_routes(
         routes.route(
             next(iter(path)),
             add_prefix(paths, prefix),
-            name=get_route_name(operation.get('operationId')),
+            name=get_route_name(operation.get("operationId")),
         )(handler)
 
     # But view should be added as a view instead
@@ -289,7 +289,7 @@ def convert_operations_to_routes(
         path = add_prefix(paths, prefix)
         routes.view(
             path,
-            name=get_route_name(operation.get('operationId')),
+            name=get_route_name(operation.get("operationId")),
         )(view)
 
         # Hacky way of adding aliases to class based views with multiple
@@ -376,15 +376,14 @@ def fix_spec_operations(spec: SpecPath, schema: DictStrAny) -> SpecPath:
 
             mapping[operation_id] = maybe_operation_data.get("security")
 
-    for path in spec['paths'].values():
+    for path in spec["paths"].values():
         for operation in path.values():
-            if operation.get('security') != []:
+            if operation.get("security") != []:
                 continue
 
-            if operation.get('operationId') is None:
+            if operation.get("operationId") is None:
                 continue
-
-            operation['security'] = mapping[operation.operation_id]
+            operation["security"] = mapping[operation["operationId"]]
 
     return spec
 
@@ -737,8 +736,7 @@ def setup_openapi(  # type: ignore
         )
 
     # Fix all operation securities within OpenAPI spec
-    spec = fix_spec_operations(spec, cast(DictStrAny, schema))
-
+    # spec = fix_spec_operations(spec, cast(DictStrAny, schema))
     # Store schema, spec, and validate email kwargs in application dict
     app[APP_OPENAPI_SCHEMA_KEY] = schema
     app[APP_OPENAPI_SPEC_KEY] = spec

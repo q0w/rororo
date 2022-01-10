@@ -2,8 +2,6 @@ from typing import cast, Optional, Union, Tuple
 
 from aiohttp import hdrs, web
 from aiohttp.payload import IOBasePayload, Payload
-from openapi_core.templating.paths.finders import PathFinder
-from openapi_core.shortcuts import create_spec
 from openapi_core.spec.paths import SpecPath
 from openapi_core.validation.request.datatypes import (
     OpenAPIRequest,
@@ -12,7 +10,7 @@ from openapi_core.validation.request.datatypes import (
 from openapi_core.validation.response.datatypes import OpenAPIResponse
 from yarl import URL
 
-from ..annotations import Handler, DictStrAny
+from ..annotations import DictStrAny, Handler
 from .constants import HANDLER_OPENAPI_MAPPING_KEY
 from .exceptions import OperationError
 from .utils import get_openapi_spec
@@ -37,10 +35,12 @@ def find_core_operation(
         return None
 
 
-def get_core_operation(spec: SpecPath, operation_id: str) -> Tuple[str, DictStrAny, DictStrAny]:
-    for paths, path in spec['paths'].items():
+def get_core_operation(
+    spec: SpecPath, operation_id: str
+) -> Tuple[str, DictStrAny, DictStrAny]:
+    for paths, path in spec["paths"].items():
         for operation in path.values():
-            if operation.get('operationId') == operation_id:
+            if operation.get("operationId") == operation_id:
                 return (paths, path, operation)
     raise OperationError(
         f"Unable to find operation '{operation_id}' in given OpenAPI spec"

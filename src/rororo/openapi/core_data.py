@@ -1,4 +1,5 @@
-from typing import cast, Optional, Union, Tuple
+import dataclasses
+from typing import cast, Optional, Tuple, Union
 
 from aiohttp import hdrs, web
 from aiohttp.payload import IOBasePayload, Payload
@@ -96,6 +97,7 @@ def to_core_openapi_response(response: web.StreamResponse) -> OpenAPIResponse:
         data=to_core_openapi_response_data(response),
         status_code=response.status,
         mimetype=response.content_type,
+        headers=response.headers,
     )
 
 
@@ -121,10 +123,10 @@ def to_core_openapi_response_data(
 def to_core_request_parameters(request: web.Request) -> RequestParameters:
     header_attr = [
         item
-        for item in RequestParameters.__attrs_attrs__
+        for item in dataclasses.fields(RequestParameters)
         if item.name == "header"
     ][0]
-    is_dict_factory = header_attr.default.factory == dict
+    is_dict_factory = header_attr.default_factory == dict
 
     return RequestParameters(
         query=request.rel_url.query,

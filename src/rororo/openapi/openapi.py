@@ -735,8 +735,6 @@ def setup_openapi(  # type: ignore
             "will be ignored in favor of `schema` & `spec` args."
         )
 
-    # Fix all operation securities within OpenAPI spec
-    # spec = fix_spec_operations(spec, cast(DictStrAny, schema))
     # Store schema, spec, and validate email kwargs in application dict
     app[APP_OPENAPI_SCHEMA_KEY] = schema
     app[APP_OPENAPI_SPEC_KEY] = spec

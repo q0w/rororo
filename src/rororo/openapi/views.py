@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 class SpecPathEncoder(JSONEncoder):
-    def default(self, o: Any) -> Any:
-        if isinstance(o, SpecPath):
-            return o.content()
-        return super().default(o)
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, SpecPath):
+            return obj.content()
+        return super().default(obj)
 
 
 async def default_error_handler(request: web.Request) -> web.Response:

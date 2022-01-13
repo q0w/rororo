@@ -9,17 +9,17 @@ from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from openapi_core.casting.schemas.exceptions import CastError as CoreCastError
 from openapi_core.deserializing.exceptions import DeserializeError
 from openapi_core.deserializing.parameters.exceptions import (
-    EmptyParameterValue,
-)
-from openapi_core.exceptions import OpenAPIError as CoreOpenAPIError
-from openapi_core.templating.media_types.exceptions import (
-    MediaTypeNotFound,
-    MediaTypeFinderError,
+    EmptyQueryParameterValue,
 )
 from openapi_core.exceptions import (
     MissingParameter,
     MissingRequiredParameter,
+    OpenAPIError as CoreOpenAPIError,
     OpenAPIParameterError,
+)
+from openapi_core.templating.media_types.exceptions import (
+    MediaTypeFinderError,
+    MediaTypeNotFound,
 )
 from openapi_core.templating.responses.exceptions import ResponseNotFound
 from openapi_core.unmarshalling.schemas.exceptions import (
@@ -265,7 +265,9 @@ class ValidationError(OpenAPIError):
         result = []
 
         for err in errors:
-            if isinstance(err, (OpenAPIParameterError, EmptyParameterValue)):
+            if isinstance(
+                err, (OpenAPIParameterError, EmptyQueryParameterValue)
+            ):
                 result.append(get_parameter_error_details(base_loc, err))
             elif isinstance(err, MediaTypeFinderError):
                 result.append(get_media_type_error_details(base_loc, err))
@@ -388,7 +390,7 @@ def get_parameter_error_details(
 
     message = {
         DeserializeError: ERROR_PARAMETER_INVALID,
-        EmptyParameterValue: ERROR_PARAMETER_EMPTY,
+        EmptyQueryParameterValue: ERROR_PARAMETER_EMPTY,
         MissingParameter: ERROR_PARAMETER_MISSING,
         MissingRequiredParameter: ERROR_PARAMETER_REQUIRED,
     }[type(err)]
